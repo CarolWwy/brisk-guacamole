@@ -14,7 +14,7 @@ knitr::opts_chunk$set(
 ```
 
 
-# 1. PROJECT INTRODUCTIONC
+# 1. Project Introdcution
 YouTube is the most popular video platform with the largest user base. One of the most important reasons for its popularity is that YouTube allows everyone to be a blogger. It enables content creators to share their content with a large audience. As a result, there’s a wide range of content to choose from. No matter what you want, such as makeup tutorials, cooking guides, product reviews or travel vlogs, you can always find them on YouTube. 
 
 However, with millions of contents published every day, it’s super hard for a video to stand out. Our project aims at figuring out what factors make a YouTube video a hit. Here, we use Python and Hadoop to analyze the Trending YouTube Video dataset, which includes the data on daily trending YouTube videos from 10 regions, with up to 200 listed trending videos per day. 
@@ -64,7 +64,7 @@ library(jsonlite)
 ## Reading and preparing data
 
 ```{r}
-setwd("D:/2020 Coding Projects/youtube_trending_videos")
+setwd("C:/Users/xiaol/OneDrive/Documents/GitHub/brisk-guacamole")
 
 #load GB data
 gb_r = read.csv("D:/2020 Coding Projects/youtube_trending_videos/youtube data/GBvideos.csv")
