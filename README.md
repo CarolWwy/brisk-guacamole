@@ -1,8 +1,10 @@
 # brisk-guacamole
-Welcome to my coding world!
+Hello there, thank you for being here!
 
 I'm Carol, a customer-facing marketer, a master student, and also a beginner of coding.
 
-Here's some of my coding works. I will constantly update my github page later.
+I aims at becoming a data-driven story teller. Here's some of my works. 
 
-Welcome any kinds of discussion and suggestions!
+I will keep learning and keep updating my github page.
+
+Welcome any discussion and suggestions!
