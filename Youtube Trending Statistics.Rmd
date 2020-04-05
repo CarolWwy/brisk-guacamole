@@ -1,0 +1,557 @@
+---
+title: "Youtube Trending Video"
+author: "Carol"
+date: "4/4/2020"
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE)
+```
+
+
+# 1. PROJECT INTRODUCTIONC
+YouTube is the most popular video platform with the largest user base. One of the most important reasons for its popularity is that YouTube allows everyone to be a blogger. It enables content creators to share their content with a large audience. As a result, there’s a wide range of content to choose from. No matter what you want, such as makeup tutorials, cooking guides, product reviews or travel vlogs, you can always find them on YouTube. 
+
+However, with millions of contents published every day, it’s super hard for a video to stand out. Our project aims at figuring out what factors make a YouTube video a hit. Here, we use Python and Hadoop to analyze the Trending YouTube Video dataset, which includes the data on daily trending YouTube videos from 10 regions, with up to 200 listed trending videos per day. 
+
+The main goal of this project is to get insights into trending videos, to find out what’s the common features. Moreover, YouTube has a wide range of users who are from all over the world. People from different areas have different tastes on videos, so we analyzed user preference based on regions. Knowing that which category is their favorite, we could deliver exactly what they want. Hopefully, these insights will be helpful to the content creators who want to increase the popularity of their videos.
+
+
+# 2. Description of the data
+What is YouTube and trending video?
+YouTube has a sophisticated algorithm to select 200 “trending video” of everyday. “trending video”  is not simply the top 200 most-viewed videos, but those videos selected by  a combination of factors including measuring users interactions, such as number of views, shares, comments and likes/dislikes. 
+
+### About data source
+This dataset is an opensource dataset from Kaggle, link:
+https://www.kaggle.com/datasnaek/youtube-new
+The data is collected by Kaggle user Mitchell J using the YouTube API in June 2019.
+
+
+# 3. Dataset Description 
+
+### Loading libraries
+
+```{r}
+set.seed(1)
+# Data manipulation
+library(data.table)
+library(dplyr)
+library(DT)
+library(stringi)
+
+# Time manipulation,ymd function
+library(lubridate)
+
+# Visualization
+library(knitr)
+library(ggplot2)
+library(plotrix)
+library(corrplot)
+library(ggrepel)
+library(gbm)
+
+# Extract data from json
+library(rjson)
+library(jsonlite)
+
+```
+
+## Reading and preparing data
+
+```{r}
+setwd("D:/2020 Coding Projects/youtube_trending_videos")
+
+#load GB data
+gb_r = read.csv("D:/2020 Coding Projects/youtube_trending_videos/youtube data/GBvideos.csv")
+gb_category = fromJSON("D:/2020 Coding Projects/youtube_trending_videos/youtube data/GB_category_id.json")
+
+category_id = gb_category[["items"]][["id"]]
+category = gb_category[["items"]][["snippet"]][["title"]]
+gb_category = data.frame(category_id , category)
+gb = merge(gb_r,gb_category)
+gb$location = "GB"
+
+dim(gb)
+
+# Load CA data
+ca_r = read.csv("D:/2020 Coding Projects/youtube_trending_videos/youtube data/CAvideos.csv")
+ca_category = fromJSON("D:/2020 Coding Projects/youtube_trending_videos/youtube data/CA_category_id.json")
+
+category_id = ca_category[["items"]][["id"]]
+category = ca_category[["items"]][["snippet"]][["title"]]
+ca_category = data.frame(category_id , category)
+ca = merge(ca_r,ca_category)
+ca$location = "CA"
+
+dim(ca)
+
+#Load US data
+us_r = read.csv("D:/2020 Coding Projects/youtube_trending_videos/youtube data/USvideos.csv")
+us_category = fromJSON("D:/2020 Coding Projects/youtube_trending_videos/youtube data/US_category_id.json")
+
+category_id = us_category[["items"]][["id"]]
+category = us_category[["items"]][["snippet"]][["title"]]
+us_category = data.frame(category_id , category)
+us = merge(us_r,us_category)
+us$location = "US"
+
+dim(us)
+
+#Load FR data
+fr_r = read.csv("D:/2020 Coding Projects/youtube_trending_videos/youtube data/FRvideos.csv")
+fr_category = fromJSON("D:/2020 Coding Projects/youtube_trending_videos/youtube data/FR_category_id.json")
+
+category_id = fr_category[["items"]][["id"]]
+category = fr_category[["items"]][["snippet"]][["title"]]
+fr_category = data.frame(category_id , category)
+fr = merge(fr_r,fr_category)
+fr$location = "FR"
+
+dim(fr)
+
+#Load DE data
+de_r = read.csv("D:/2020 Coding Projects/youtube_trending_videos/youtube data/DEvideos.csv")
+de_category = fromJSON("D:/2020 Coding Projects/youtube_trending_videos/youtube data/DE_category_id.json")
+
+category_id = de_category[["items"]][["id"]]
+category = de_category[["items"]][["snippet"]][["title"]]
+de_category = data.frame(category_id , category)
+de = merge(de_r,de_category)
+de$location = "DE"
+
+dim(de)
+```
+
+```{r}
+#Merge data from 5 countries into videos dataset
+videos <- as.data.table(rbind(gb,ca,us,fr,de))
+
+dim(videos)
+
+#convert trending_date to datetime
+videos$trending_date <- ydm(videos$trending_date)
+
+#extract publish hour
+videos$publish_time_hour = hour(hms(substr(videos$publish_time,start =12, stop=19)))
+
+#extract video publish time: day of week 1=Sunday, 2=Monday
+videos$publish_time_dayofweek = wday(videos$publish_time)
+head(videos$publish_time_dayofweek)
+
+#extract publish date
+videos$publish_time <- ymd(substr(videos$publish_time,start = 1,stop = 10))
+
+#Calculate the time difference between publish time and trending date
+videos$dif_days <- videos$trending_date-videos$publish_time
+
+#Let's see the new dataset
+dim(videos)
+names(videos)
+```
+
+Each dataset collected trending videos over 205 days, from 2017/11/14 to 2018/06/14. Average views: 2055209, average likes: 56699, average dislikes: 3011 and average comments: 6112.
+
+
+
+
+# Part 1- Global trending videos Overview
+
+First let's see some number of global trending videos. 
+
+# Top 10 videos in absolute value{.tabset .tabset-fade .tabset-pills}
+
+## Viewed videos
+```{r}
+mviews = videos[,.("Total_Views"=round(max(views,na.rm = T),digits = 2)),by=.(title,thumbnail_link)][order(-Total_Views)]
+mviews %>%
+  mutate(image = paste0('<img width="80%" height="80%" src="', thumbnail_link , '"></img>')) %>% 
+  arrange(desc(Total_Views)) %>%
+  head(10)%>%
+  select(image,title,Total_Views) %>%
+  datatable(class = "nowrap hover row-border", escape = FALSE, options = list(dom = 't',scrollX = TRUE, autoWidth = TRUE))
+```
+
+## Liked videos
+```{r}
+mlikes = videos[,.("Total_Likes"=round(max(likes,na.rm = T),digits = 2)),by=.(title,thumbnail_link)]
+mlikes %>%
+  mutate(image = paste0('<img width="80%" height="80%" src="', thumbnail_link , '"></img>')) %>% 
+  arrange(desc(Total_Likes)) %>%
+  head(10)%>%
+  select(image,title,Total_Likes)%>%
+  datatable(class = "nowrap hover row-border", escape = FALSE, options = list(dom = 't',scrollX = TRUE, autoWidth = TRUE))
+```
+
+## Disliked videos
+```{r}
+mdislikes = videos[,.("Total_Dislikes"=round(max(dislikes,na.rm = T),digits = 2)),by=.(title,thumbnail_link)]
+mdislikes %>%
+  mutate(image = paste0('<img width="80%" height="80%" src="', thumbnail_link , '"></img>')) %>% 
+  arrange(desc(Total_Dislikes)) %>%
+  head(10)%>%
+  select(image,title,Total_Dislikes)%>%
+  datatable(class = "nowrap hover row-border", escape = FALSE, options = list(dom = 't',scrollX = TRUE, autoWidth = TRUE))
+```
+
+## Commented videos
+```{r}
+mcomments = videos[,.("Total_Comments"=round(max(comment_count,na.rm = T),digits = 2)),by=.(title,thumbnail_link)]
+mcomments %>%
+  arrange(desc(Total_Comments)) %>%
+  head(10)%>%
+  mutate(image = paste0('<img width="80%" height="80%" src="', thumbnail_link , '"></img>')) %>% 
+  select(image,title, Total_Comments)%>%
+  datatable(class = "nowrap hover row-border", escape = FALSE, options = list(dom = 't',scrollX = TRUE, autoWidth = TRUE))
+
+```
+
+
+
+# Top 10 videos in percentage
+
+The absolute number of likes, dislikes and comments didn't show the whole picture of video influence. Here I use percentage to further discover the trending data. To guarantee the validity of result, I filter the videos with at least 75626 views (1st quartile).
+
+# Top 10 videos in percentage{.tabset .tabset-fade .tabset-pills}
+
+## % Liked videos
+```{r}
+mlikes_percent <- videos[,.("Views" = views, "Percentage_Likes"=round(100*max(likes,na.rm = T)/max(views,na.rm = T),digits = 2)),by=.(title,thumbnail_link)][order(-Percentage_Likes)]
+mlikes_percent %>% 
+  mutate(image = paste0('<img width="80%" height="80%" src="', thumbnail_link , '"></img>')) %>% 
+  filter(Views>=75626)%>% 
+  arrange(-Percentage_Likes) %>% 
+  head(10)%>% 
+  select(image, title, Percentage_Likes)%>%
+  datatable(class = "nowrap hover row-border", escape = FALSE, options = list(dom = 't',scrollX = TRUE, autoWidth = TRUE))
+```
+
+## % Disliked videos 
+```{r}
+mdislikes_percent <- videos[,.("Views" = views, "Percentage_Dislikes"=round(100*max(dislikes,na.rm = T)/max(views,na.rm = T),digits = 2)),by=.(title,thumbnail_link)][order(-Percentage_Dislikes)]
+
+mdislikes_percent %>% 
+  mutate(image = paste0('<img width="80%" height="80%" src="', thumbnail_link , '"></img>')) %>% 
+  filter(Views>=75626)%>% 
+  arrange(-Percentage_Dislikes) %>%
+  head(10) %>% 
+  select(image, title,Percentage_Dislikes) %>%
+  datatable(class = "nowrap hover row-border", escape = FALSE, options = list(dom = 't',scrollX = TRUE, autoWidth = TRUE))
+```
+
+## % Commented videos 
+```{r}
+mcomments_percent <- videos[,.("Views" = views, "Percentage_comments"=round(100*max(comment_count,na.rm = T)/max(views,na.rm = T),digits = 2)),by=.(title,thumbnail_link)][order(-Percentage_comments)]
+
+mcomments_percent %>% 
+  mutate(image = paste0('<img width="80%" height="80%" src="', thumbnail_link , '"></img>')) %>% 
+  filter(Views>=75626)%>% 
+  arrange(-Percentage_comments) %>% 
+  head(10) %>% 
+  select(image, title, Percentage_comments)%>%
+  datatable(class = "nowrap hover row-border", escape = FALSE, options = list(dom = 't',scrollX = TRUE, autoWidth = TRUE))
+```
+
+
+
+# Part 2- Geographical Analysis
+
+This part I go down to country level to discover which country has the most active Youtube users.
+
+# Geographical Analysis {.tabset .tabset-fade .tabset-pills}
+
+## Total Views
+```{r}
+country_view = videos[,.("Total_Views"=max(views)),by=location]
+
+ggplot(country_view,aes(reorder(location,-Total_Views),Total_Views,fill=location))+geom_bar(stat="identity")+
+geom_label(aes(label=Total_Views))+  labs(title=" Total Views by Countries")+labs(x=NULL, y= NULL)+
+scale_fill_brewer(palette = "Set3")
+
+```
+British users have most views on Youtube trending videos, far beyond the second region, United States.
+
+
+## In total number of Interactions
+
+```{r}
+country_interact = videos[,.("Total_Interact"=max(likes)+max(dislikes)+max(comment_count)),by=location]
+
+ggplot(country_interact,aes(reorder(location,-Total_Interact),Total_Interact,fill=location))+geom_bar(stat="identity")+
+geom_label(aes(label=Total_Interact))+  labs(title=" Total Interaction by Countries")+labs(x=NULL, y= NULL)+
+scale_fill_brewer(palette = "Set3")
+```
+
+Interaction is an important criteria of trending video as well. Let's see which country have the best performance of intertaction. (*Interaction= likes + dislikes + comments)
+
+The rank distribution is almost the same as the previous graph. With the largest view volume, it's not surprising to see that British have the largest amount of interation. 
+
+
+## Percentage of Interactions
+
+When we use the interaction ratio as metrix, things become totally different.
+
+```{r}
+interact_percent = videos[,.("Interact_Percent" = (max(likes)+max(dislikes)+max(comment_count))/max(views)), by =location]
+
+ggplot(interact_percent,aes(reorder(location,-Interact_Percent),Interact_Percent,fill=location))+geom_bar(stat="identity")+
+geom_label(aes(label=Interact_Percent))+  labs(title="Interaction Percentage by Countries")+labs(x=NULL, y= NULL)+
+scale_fill_brewer(palette = "Set3")
+```
+
+From the graph above, I could conclude that French and Germen users tend to react more to Youtube Videos.
+
+
+
+
+# Part-3: Top trending Channels in all countries
+
+# Top Channels in each country {.tabset .tabset-fade .tabset-pills}
+
+## Overall
+```{r}
+top_channel = videos[,.N,by=channel_title][order(-N)][1:10]
+
+ggplot(top_channel,aes(reorder(channel_title,-N),N,fill=channel_title))+geom_bar(stat="identity")+
+geom_label(aes(label=N))+theme(axis.text.x = element_text(angle = 45,hjust = 1))+
+labs(title=" Top trending channel titles in all countries")+labs(x = NULL, y= NULL)+coord_flip()+
+scale_fill_brewer(palette = "Set3")
+
+```
+
+Most popular trending channels are US talk shows, like the late show with stephen colbert,and Late Night with Seth Meyers. The top trending channels are almost from United States. I took a wild guess that the results may be dominated by US users strong love over talk show.
+
+
+To justify my guess, I look deep into the trending video channels in three English country: US, GB, CA. 
+
+## US
+```{r}
+top_channel_us = videos[location == "US"][,.N,by=channel_title][order(-N)][1:10]
+
+ggplot(top_channel_us,aes(reorder(channel_title,-N),N,fill=channel_title))+geom_bar(stat="identity")+
+geom_label(aes(label=N))+theme(axis.text.x = element_text(angle = 45,hjust = 1))+
+labs(title=" Top trending channel titles in US")+labs(x = NULL, y= NULL)+coord_flip()+
+scale_fill_brewer(palette = "Set3")
+
+```
+
+## CA
+```{r}
+top_channel_ca = videos[location == "CA"][,.N,by=channel_title][order(-N)][1:10]
+
+ggplot(top_channel_ca,aes(reorder(channel_title,-N),N,fill=channel_title))+geom_bar(stat="identity")+
+geom_label(aes(label=N))+theme(axis.text.x = element_text(angle = 45,hjust = 1))+
+labs(title=" Top trending channel titles in CA")+labs(x = NULL, y= NULL)+coord_flip()+
+scale_fill_brewer(palette = "Set3")
+```
+
+## GB
+```{r}
+top_channel_gb = videos[location == "GB"][,.N,by=channel_title][order(-N)][1:10]
+
+ggplot(top_channel_gb,aes(reorder(channel_title,-N),N,fill=channel_title))+geom_bar(stat="identity")+
+geom_label(aes(label=N))+theme(axis.text.x = element_text(angle = 45,hjust = 1))+
+labs(title=" Top trending channel titles in GB")+labs(x = NULL, y= NULL)+coord_flip()+
+scale_fill_brewer(palette = "Set3")
+```
+
+It turned out that things are not what I expected. Suprisingly, instead of US users, British users are the one who love American talk shows most!
+
+
+
+# Part-4: Top trending Categories in all countries
+
+# Top Categories in each country {.tabset .tabset-fade .tabset-pills}
+
+## Global
+```{r}
+top_category = videos[,.N,by=category][order(-N)][1:10]
+
+gl_ca = ggplot(top_category,aes(reorder(category,-N),N,fill=category))+geom_bar(stat="identity")+
+geom_label(aes(label=N))+theme(axis.text.x = element_text(angle = 45,hjust = 1))+
+labs(title=" Top trending categories Globally")+labs(x = NULL, y= NULL)+scale_fill_brewer(palette = "Set3")
+gl_ca
+```
+
+## US
+```{r}
+top_category_us = videos[location == "US"][,.N,by=category][order(-N)][1:10]
+
+us_ca = ggplot(top_category_us,aes(reorder(category,-N),N,fill=category))+geom_bar(stat="identity")+
+geom_label(aes(label=N))+theme(axis.text.x = element_text(angle = 45,hjust = 1))+
+labs(title=" Top trending categories in US")+labs(x = NULL, y= NULL)+scale_fill_brewer(palette = "Set3")
+
+us_ca
+```
+
+## CA
+```{r}
+top_category_ca = videos[location == "CA"][,.N,by=category][order(-N)][1:10]
+
+ca_ca= ggplot(top_category_ca,aes(reorder(category,-N),N,fill=category))+geom_bar(stat="identity")+
+geom_label(aes(label=N))+theme(axis.text.x = element_text(angle = 45,hjust = 1))+
+labs(title=" Top trending categories in CA")+labs(x = NULL, y= NULL)+scale_fill_brewer(palette = "Set3")
+
+ca_ca
+```
+
+## GB
+```{r}
+top_category_gb = videos[location == "GB"][,.N,by=category][order(-N)][1:10]
+
+gb_ca = ggplot(top_category_gb,aes(reorder(category,-N),N,fill=category))+geom_bar(stat="identity")+
+geom_label(aes(label=N))+theme(axis.text.x = element_text(angle = 45,hjust = 1))+
+labs(title=" Top trending categories in GB")+labs(x = NULL, y= NULL)+scale_fill_brewer(palette = "Set3")
+gb_ca
+```
+
+## FR
+```{r}
+top_category_fr = videos[location == "FR"][,.N,by=category][order(-N)][1:10]
+
+fr_ca = ggplot(top_category_fr,aes(reorder(category,-N),N,fill=category))+geom_bar(stat="identity")+
+geom_label(aes(label=N))+theme(axis.text.x = element_text(angle = 45,hjust = 1))+
+labs(title=" Top trending categories in FR")+labs(x = NULL, y= NULL)+scale_fill_brewer(palette = "Set3")
+
+fr_ca
+```
+
+
+## DE
+```{r}
+top_category_de = videos[location == "DE"][,.N,by=category][order(-N)][1:10]
+
+de_ca = ggplot(top_category_de,aes(reorder(category,-N),N,fill=category))+geom_bar(stat="identity")+
+geom_label(aes(label=N))+theme(axis.text.x = element_text(angle = 45,hjust = 1))+
+labs(title=" Top trending categories in DE")+labs(x = NULL, y= NULL)+scale_fill_brewer(palette = "Set3")
+
+de_ca
+```
+
+Entertainment is the top category in almost every country, except Great Britain. The top category in Great British is Music, then Entertainment. British people is music mania!
+
+
+
+# Part-5: Title length
+
+## Does video title length matters?
+
+To answer this question, I did the hypothesis testing among the top 20000 viewed videos and the bottom 20000 viewed videos.
+
+```{r}
+# Most likes video string length
+v_best_title = videos[order(-views)][1:20000][,.("Title_Len"= stri_length(title))][,.N,by=Title_Len][order(-N)]
+ggplot(v_best_title,aes(Title_Len,N,fill=N))+geom_bar(stat = "identity")+
+labs(title="Title length")+labs(x = NULL, y= NULL)
+v_best_title$Title_Len[1]
+v_best_title
+
+v_worst_title = videos[order(views)][1:20000][,.("Title_Len"= stri_length(title))][,.N,by=Title_Len][order(-N)]
+ggplot(v_worst_title,aes(Title_Len,N,fill=N))+geom_bar(stat = "identity")+
+labs(title="Title length")+labs(x = NULL, y= NULL)+ geom_vline(xintercept = 36, lwd = 1, col='red')
+
+t.test(v_best_title, v_worst_title)
+```
+
+P value is 0.177(>0.05), which means statistically title length is not significantly different between two groups. However, by observing these two graphs, we could tell that the most popular videos with highest views tend to have a more compact title, with a title length of 33 to 43. 
+
+# Part-6
+
+## How much time passes between published and trending?
+
+```{r}
+ggplot(videos[dif_days<30],aes(as.factor(dif_days),fill=as.factor(dif_days)))+geom_bar()+
+labs(title=" Time between published and trending",subtitle="In days")+labs(x = NULL, y= NULL)
+
+```
+
+It usually takes 1-3 days between video published and become trending.
+
+
+# Part-7
+
+## What is the best publish time?
+
+```{r}
+# Day of Week
+ggplot(videos,aes(as.factor(publish_time_dayofweek),fill=as.factor(publish_time_dayofweek)))+geom_bar()+
+labs(title="Best Publish Time",subtitle="Day of Week")
+
+# Time of day
+ggplot(videos,aes(as.factor(publish_time_hour),fill=as.factor(publish_time_hour)))+geom_bar()+
+labs(title="Best Publish Time",subtitle="Time of Day")+labs(x = NULL, y= NULL)
+
+```
+
+Most trending videos are published at afternoon. 3pm to 5pm is the peak publishing time.
+Trending videos are most published at Friday. With 1-2 days' time difference between published and trending, I conclude that the videos published at Friday/Thursday are more likely to become trending during weekends, since users spend more time watching Youtube videos during weekends.
+
+
+
+# Part-8
+
+## Finally, let't see the correlation between variables.
+
+```{r}
+
+corrplot.mixed(corr = cor(videos[,c("category_id","views","likes","dislikes","comment_count"),with=F]))
+
+```
+
+We can see that between views and likes we have a high correlation, I supposed that we will have a similar correlation between views and dislikes, but it turned out to be only half of the like correlation.
+
+
+## Corelation between views and Likes/ Dislikes/ Comments
+
+```{r}
+# Views vs Likes
+view_likes = videos[,.("views"=max(views),"likes"=max(likes)),by=.(title, location)]
+
+ggplot(view_likes,aes(views,likes,colour=location,shape = location,size = likes))+
+geom_jitter()+geom_smooth(method=lm,se=FALSE, fullrange=TRUE)+labs(title="Views Vs Likes",subtitle="In days")
+
+# Views vs Dislikes
+view_dislikes = videos[,.("views"=max(views),"dislikes"=max(dislikes)),by=.(title, location)]
+
+ggplot(view_dislikes,aes(views,dislikes,colour=location,shape = location,size = dislikes))+
+geom_jitter()+geom_smooth(method=lm,se=FALSE, fullrange=TRUE)+labs(title="Views Vs Dislikes",subtitle="In days")
+
+# Views vs Comments
+view_comments = videos[,.("views"=max(views),"comments"=max(comment_count)),by=.(title, location)]
+
+ggplot(view_comments,aes(views,comments,colour=location,shape = location,size = comments))+
+geom_jitter()+geom_smooth(method=lm,se=FALSE, fullrange=TRUE)+labs(title="Views Vs Comments",subtitle="In days")
+```
+
+The slope of Views vs. Dislikes is much flatter than Views vs. Likes, which once again proves that dislikes is not that relevant with views. 
+Comparing different country, French and German users have a higher ratio of like/views and comments/views. They tend to be more active users. British users are the least active in comments and likes.
+
+
+
+
+## Correlation between comments and likes/ dislikes
+
+I supposed that comments goes up with likes. The same as dislikes. Only when users explictly like/dislike a video, they will leave comments. Let's see if my intuition is correct.
+
+```{r}
+
+comments_likes = videos[,.("likes"=max(likes),"comments"=max(comment_count)),by=.(title, location)]
+
+comments_dislikes = videos[,.("dislikes"=max(dislikes),"comments"=max(comment_count)),by=.(title, location)]
+
+p_likes = ggplot(comments_likes,aes(likes,comments,colour=location,shape = location,size = comments))+
+geom_jitter()+geom_smooth(method=lm,se=FALSE, fullrange=TRUE)+labs(title="Likes VS. Comments",subtitle="In days")
+
+p_dislikes = ggplot(comments_dislikes,aes(dislikes,comments,colour=location,shape = location,size = comments))+
+geom_jitter()+geom_smooth(method=lm,se=FALSE, fullrange=TRUE)+labs(title="Dislikes VS. Comments",subtitle="In days")
+
+p_likes
+p_dislikes
+
+```
+
+The trend line of dislikes vs. comments is much steeper than likes vs. comments. Youtube Users tend to leave comments when they have negative sentiments over a video.
