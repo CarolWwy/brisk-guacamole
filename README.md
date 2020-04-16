@@ -6,7 +6,9 @@ I'm Carol, a customer-facing marketer, a master student at Washington University
 I aims at being a data-driven story teller, deriving valuable insights from data. Here's some of my works.
 
 - Youtube Trending Video Statistics (R)
-- US Startup Investment Visualization (Tableau)
+https://carolwwy.github.io/brisk-guacamole/US Start-up Investment Analysis.pdf
+- US Startup Investment Visualization (Tableau) 
+https://carolwwy.github.io/brisk-guacamole/Youtube-Trending-Statistics.html
 ...
 
 I will keep learning and keep updating my github page.
